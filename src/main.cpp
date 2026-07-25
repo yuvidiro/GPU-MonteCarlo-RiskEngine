@@ -1,19 +1,20 @@
 #include <iostream>
 
-#include "Simulation.h"
+#include "RandomGenerator.h"
+#include "MonteCarloEngine.h"
 
 int main()
 {
-    Simulation simulation(
-        100.0f,
-        0.08f,
-        0.20f,
-        252);
+   MonteCarloEngine engine(
+    100.0f,
+    0.08f,
+    0.20f,
+    252);
 
-    auto results = simulation.Run(10);
+auto prices = engine.SimulateOnePath();
 
-    std::cout
-        << "Simulation completed.\n";
-
-    return 0;
+for(float price : prices)
+{
+    std::cout << price << '\n';
+}
 }

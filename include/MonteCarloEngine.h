@@ -2,17 +2,19 @@
 
 #include <vector>
 
-class Simulation
+#include "RandomGenerator.h"
+
+class MonteCarloEngine
 {
 public:
 
-    Simulation(
+    MonteCarloEngine(
         float initialPrice,
         float expectedReturn,
         float volatility,
         int tradingDays);
 
-    std::vector<float> Run(std::size_t numSimulations);
+    std::vector<float> SimulateOnePath();
 
 private:
 
@@ -20,4 +22,6 @@ private:
     float mExpectedReturn;
     float mVolatility;
     int mTradingDays;
+
+    RandomGenerator mRandom;
 };
