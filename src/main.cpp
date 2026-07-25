@@ -1,20 +1,26 @@
 #include <iostream>
 
-#include "RandomGenerator.h"
 #include "MonteCarloEngine.h"
 
 int main()
 {
-   MonteCarloEngine engine(
-    100.0f,
-    0.08f,
-    0.20f,
-    252);
+    MonteCarloEngine engine(
+        100.0f,   // Initial stock price
+        0.08f,    // Expected annual return
+        0.20f,    // Annual volatility
+        252);     // Trading days
 
-auto prices = engine.SimulateOnePath();
+    auto prices = engine.SimulateOnePath();
 
-for(float price : prices)
-{
-    std::cout << price << '\n';
-}
+    for (size_t day = 0; day < prices.size(); ++day)
+    {
+        std::cout
+            << "Day "
+            << day
+            << " : "
+            << prices[day]
+            << '\n';
+    }
+
+    return 0;
 }
