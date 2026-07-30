@@ -1,11 +1,12 @@
 #pragma once
 
+#include <cstdint>
 #include <random>
 
 class RandomGenerator
 {
 public:
-    RandomGenerator();
+    explicit RandomGenerator(std::uint32_t seed);
 
     float NextGaussian();
 

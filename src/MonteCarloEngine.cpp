@@ -1,53 +1,67 @@
 #include "MonteCarloEngine.h"
-
+#include "RandomGenerator.h"
 #include <cmath>
+#include <cstdint>
+#include <omp.h>
 
 MonteCarloEngine::MonteCarloEngine(
     float initialPrice,
     float expectedReturn,
     float volatility,
     int tradingDays)
-    :
-    mInitialPrice(initialPrice),
-    mExpectedReturn(expectedReturn),
-    mVolatility(volatility),
-    mTradingDays(tradingDays)
+    : mInitialPrice(initialPrice),
+      mExpectedReturn(expectedReturn),
+      mVolatility(volatility),
+      mTradingDays(tradingDays)
 {
 }
 
-std::vector<float> MonteCarloEngine::SimulateOnePath()
+std::vector<float> MonteCarloEngine::Run(
+    std::size_t numSimulations)
 {
-    std::vector<float> prices;
+    std::vector<float> results(numSimulations);
 
-    // Reserve memory to avoid reallocations
-    prices.reserve(mTradingDays + 1);
-
-    float price = mInitialPrice;
-
-    // Store initial price (Day 0)
-    prices.push_back(price);
-
-    // Time step (1 trading day)
     const float dt = 1.0f / 252.0f;
 
-    // Constant drift term
     const float drift =
-        (mExpectedReturn - 0.5f * mVolatility * mVolatility) * dt;
+        (mExpectedReturn
+        - 0.5f * mVolatility * mVolatility) * dt;
 
-    // Constant diffusion term
     const float diffusion =
         mVolatility * std::sqrt(dt);
 
-    for (int day = 0; day < mTradingDays; ++day)
+#pragma omp parallel
     {
-        // Standard normal random number
-        float z = mRandom.NextGaussian();
+        const int threadId = omp_get_thread_num();
 
-        // Geometric Brownian Motion update
-        price *= std::exp(drift + diffusion * z);
+        RandomGenerator random(
+            12345u + static_cast<std::uint32_t>(threadId)
+        );
 
-        prices.push_back(price);
+#pragma omp for
+        for (long long sim = 0;
+             sim < static_cast<long long>(numSimulations);
+             ++sim)
+        {
+            float price = mInitialPrice;
+
+            for (int day = 0;
+                 day < mTradingDays;
+                 ++day)
+            {
+                const float z =
+                    random.NextGaussian();
+
+                price *= std::exp(
+                    drift + diffusion * z
+                );
+            }
+
+            results[
+                static_cast<std::size_t>(sim)
+            ] = price;
+        }
     }
 
-    return prices;
+    return results;
 }

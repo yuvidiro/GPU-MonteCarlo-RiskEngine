@@ -1,26 +1,50 @@
-#include <iostream>
+#include "GpuMonteCarlo.h"
 
-#include "MonteCarloEngine.h"
+#include <iostream>
 
 int main()
 {
-    MonteCarloEngine engine(
-        100.0f,   // Initial stock price
-        0.08f,    // Expected annual return
-        0.20f,    // Annual volatility
-        252);     // Trading days
+    constexpr float initialPrice =
+        100.0f;
 
-    auto prices = engine.SimulateOnePath();
+    constexpr float expectedReturn =
+        0.08f;
 
-    for (size_t day = 0; day < prices.size(); ++day)
+    constexpr float volatility =
+        0.20f;
+
+    constexpr int tradingDays =
+        252;
+
+    constexpr std::size_t numSimulations =
+        10000;
+
+    auto results =
+        RunGpuMonteCarlo(
+            initialPrice,
+            expectedReturn,
+            volatility,
+            tradingDays,
+            numSimulations
+        );
+
+    for (
+        std::size_t i = 0;
+        i < 10;
+        ++i)
     {
         std::cout
-            << "Day "
-            << day
+            << "GPU Simulation "
+            << i
             << " : "
-            << prices[day]
+            << results[i]
             << '\n';
     }
+
+    std::cout
+        << "\nTotal GPU Simulations = "
+        << results.size()
+        << '\n';
 
     return 0;
 }

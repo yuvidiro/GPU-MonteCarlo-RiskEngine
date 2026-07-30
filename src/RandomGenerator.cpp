@@ -1,7 +1,7 @@
 #include "RandomGenerator.h"
 
-RandomGenerator::RandomGenerator()
-    : mGenerator(std::random_device{}()),
+RandomGenerator::RandomGenerator(std::uint32_t seed)
+    : mGenerator(seed),
       mDistribution(0.0f, 1.0f)
 {
 }
