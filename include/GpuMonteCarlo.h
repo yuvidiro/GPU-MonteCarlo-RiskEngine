@@ -28,7 +28,8 @@ GpuBenchmarkResult RunGpuMonteCarlo(
     float expectedReturn,
     float volatility,
     int tradingDays,
-    std::size_t numSimulations
+    std::size_t numSimulations,
+    int threadsPerBlock = 256
 );
 
 GpuBatchBenchmarkResult RunBatchedGpuMonteCarlo(
@@ -37,5 +38,6 @@ GpuBatchBenchmarkResult RunBatchedGpuMonteCarlo(
     float volatility,
     int tradingDays,
     std::size_t totalSimulations,
-    std::size_t batchSize
+    std::size_t batchSize,
+    int threadsPerBlock = 256
 );

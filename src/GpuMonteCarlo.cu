@@ -50,7 +50,6 @@ void MonteCarloKernel(
         return;
     }
 
-    // Each batch must use different random sequences.
     const std::size_t globalSimulationId =
         simulationOffset
         + localSimulationId;
@@ -107,7 +106,8 @@ GpuBenchmarkResult RunGpuMonteCarlo(
     float expectedReturn,
     float volatility,
     int tradingDays,
-    std::size_t numSimulations)
+    std::size_t numSimulations,
+    int threadsPerBlock)
 {
     std::vector<float> hostResults(
         numSimulations
@@ -144,17 +144,18 @@ GpuBenchmarkResult RunGpuMonteCarlo(
         )
     );
 
-    constexpr int threadsPerBlock =
-        256;
-
     const int blocks =
         static_cast<int>(
             (
                 numSimulations
-                + threadsPerBlock
+                + static_cast<std::size_t>(
+                    threadsPerBlock
+                )
                 - 1
             )
-            / threadsPerBlock
+            / static_cast<std::size_t>(
+                threadsPerBlock
+            )
         );
 
     CUDA_CHECK(
@@ -243,9 +244,9 @@ GpuBatchBenchmarkResult RunBatchedGpuMonteCarlo(
     float volatility,
     int tradingDays,
     std::size_t totalSimulations,
-    std::size_t batchSize)
+    std::size_t batchSize,
+    int threadsPerBlock)
 {
-    // Allocate the largest required GPU buffer once.
     float* deviceResults =
         nullptr;
 
@@ -262,7 +263,6 @@ GpuBatchBenchmarkResult RunBatchedGpuMonteCarlo(
         )
     );
 
-    // Reuse one CPU buffer for every batch.
     std::vector<float> hostResults(
         batchSize
     );
@@ -281,9 +281,6 @@ GpuBatchBenchmarkResult RunBatchedGpuMonteCarlo(
             &kernelStop
         )
     );
-
-    constexpr int threadsPerBlock =
-        256;
 
     double totalSum =
         0.0;
@@ -318,10 +315,14 @@ GpuBatchBenchmarkResult RunBatchedGpuMonteCarlo(
             static_cast<int>(
                 (
                     currentBatchSize
-                    + threadsPerBlock
+                    + static_cast<std::size_t>(
+                        threadsPerBlock
+                    )
                     - 1
                 )
-                / threadsPerBlock
+                / static_cast<std::size_t>(
+                    threadsPerBlock
+                )
             );
 
         CUDA_CHECK(
@@ -434,7 +435,6 @@ GpuBatchBenchmarkResult RunBatchedGpuMonteCarlo(
         )
     );
 
-    // Free GPU memory once after every batch finishes.
     CUDA_CHECK(
         cudaFree(
             deviceResults
