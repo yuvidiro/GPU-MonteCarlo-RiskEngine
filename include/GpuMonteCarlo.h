@@ -10,10 +10,32 @@ struct GpuBenchmarkResult
     float kernelMilliseconds;
 };
 
+struct GpuBatchBenchmarkResult
+{
+    std::size_t totalSimulations;
+
+    double meanFinalPrice;
+
+    float minimumFinalPrice;
+
+    float maximumFinalPrice;
+
+    double totalKernelMilliseconds;
+};
+
 GpuBenchmarkResult RunGpuMonteCarlo(
     float initialPrice,
     float expectedReturn,
     float volatility,
     int tradingDays,
     std::size_t numSimulations
+);
+
+GpuBatchBenchmarkResult RunBatchedGpuMonteCarlo(
+    float initialPrice,
+    float expectedReturn,
+    float volatility,
+    int tradingDays,
+    std::size_t totalSimulations,
+    std::size_t batchSize
 );

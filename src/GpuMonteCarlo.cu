@@ -8,6 +8,8 @@
 #include <iostream>
 #include <utility>
 #include <vector>
+#include <algorithm>
+#include <limits>
 
 #define CUDA_CHECK(call)                                             \
 do                                                                   \
@@ -229,5 +231,98 @@ GpuBenchmarkResult RunGpuMonteCarlo(
     return {
         std::move(hostResults),
         kernelMilliseconds
+    };
+}
+GpuBatchBenchmarkResult RunBatchedGpuMonteCarlo(
+    float initialPrice,
+    float expectedReturn,
+    float volatility,
+    int tradingDays,
+    std::size_t totalSimulations,
+    std::size_t batchSize)
+{
+    double totalSum = 0.0;
+
+    float minimumFinalPrice =
+        std::numeric_limits<float>::max();
+
+    float maximumFinalPrice =
+        std::numeric_limits<float>::lowest();
+
+    double totalKernelMilliseconds =
+        0.0;
+
+    std::size_t completedSimulations =
+        0;
+
+    while (
+        completedSimulations
+        < totalSimulations)
+    {
+        const std::size_t remaining =
+            totalSimulations
+            - completedSimulations;
+
+        const std::size_t currentBatchSize =
+            std::min(
+                batchSize,
+                remaining
+            );
+
+        auto batchResult =
+            RunGpuMonteCarlo(
+                initialPrice,
+                expectedReturn,
+                volatility,
+                tradingDays,
+                currentBatchSize
+            );
+
+        totalKernelMilliseconds +=
+            batchResult.kernelMilliseconds;
+
+        for (
+            float finalPrice
+            : batchResult.results)
+        {
+            totalSum +=
+                finalPrice;
+
+            minimumFinalPrice =
+                std::min(
+                    minimumFinalPrice,
+                    finalPrice
+                );
+
+            maximumFinalPrice =
+                std::max(
+                    maximumFinalPrice,
+                    finalPrice
+                );
+        }
+
+        completedSimulations +=
+            currentBatchSize;
+
+        std::cout
+            << "Completed "
+            << completedSimulations
+            << " / "
+            << totalSimulations
+            << " simulations\n";
+    }
+
+    const double meanFinalPrice =
+        totalSum
+        / static_cast<double>(
+            totalSimulations
+        );
+
+    return {
+        totalSimulations,
+        meanFinalPrice,
+        minimumFinalPrice,
+        maximumFinalPrice,
+        totalKernelMilliseconds
     };
 }

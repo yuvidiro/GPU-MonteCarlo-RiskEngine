@@ -1,5 +1,4 @@
 #include "GpuMonteCarlo.h"
-#include "MonteCarloEngine.h"
 
 #include <cuda_runtime.h>
 
@@ -21,133 +20,94 @@ int main()
     constexpr int tradingDays =
         252;
 
-    constexpr std::size_t numSimulations =
-        1'000'000;
+    constexpr std::size_t totalSimulations =
+        100'000'000;
+
+    constexpr std::size_t batchSize =
+        10'000'000;
 
     std::cout
-        << "Monte Carlo CPU vs GPU Benchmark\n";
+        << "GPU Monte Carlo Scale Test\n";
 
     std::cout
-        << "Simulations: "
-        << numSimulations
+        << "Total simulations: "
+        << totalSimulations
+        << '\n';
+
+    std::cout
+        << "Batch size: "
+        << batchSize
         << "\n\n";
 
-    // -------------------------
-    // CPU benchmark
-    // -------------------------
-
-    MonteCarloEngine cpuEngine(
-        initialPrice,
-        expectedReturn,
-        volatility,
-        tradingDays
-    );
-
-    const auto cpuStart =
-        std::chrono::steady_clock::now();
-
-    auto cpuResults =
-        cpuEngine.Run(
-            numSimulations
-        );
-
-    const auto cpuEnd =
-        std::chrono::steady_clock::now();
-
-    const double cpuMilliseconds =
-        std::chrono::duration<
-            double,
-            std::milli
-        >(
-            cpuEnd - cpuStart
-        ).count();
-
-    // -------------------------
-    // CUDA warm-up
-    // -------------------------
-
+    // Initialize CUDA before timing.
     cudaFree(nullptr);
 
-    // -------------------------
-    // GPU end-to-end benchmark
-    // -------------------------
-
-    const auto gpuStart =
+    const auto start =
         std::chrono::steady_clock::now();
 
-    auto gpuBenchmark =
-        RunGpuMonteCarlo(
+    const auto benchmark =
+        RunBatchedGpuMonteCarlo(
             initialPrice,
             expectedReturn,
             volatility,
             tradingDays,
-            numSimulations
+            totalSimulations,
+            batchSize
         );
 
-    const auto gpuEnd =
+    const auto end =
         std::chrono::steady_clock::now();
 
-    const double gpuMilliseconds =
+    const double endToEndMilliseconds =
         std::chrono::duration<
             double,
             std::milli
         >(
-            gpuEnd - gpuStart
+            end - start
         ).count();
 
-    // -------------------------
-    // Speedup calculations
-    // -------------------------
-
-    const double endToEndSpeedup =
-        cpuMilliseconds
-        / gpuMilliseconds;
-
-    const double kernelOnlySpeedup =
-        cpuMilliseconds
-        / gpuBenchmark.kernelMilliseconds;
-
-    // -------------------------
-    // Print results
-    // -------------------------
+    const double simulationsPerSecond =
+        static_cast<double>(
+            benchmark.totalSimulations
+        )
+        / (
+            endToEndMilliseconds
+            / 1000.0
+        );
 
     std::cout
+        << "\n"
         << std::fixed
         << std::setprecision(2);
 
     std::cout
-        << "CPU time: "
-        << cpuMilliseconds
+        << "Total end-to-end time: "
+        << endToEndMilliseconds
         << " ms\n";
 
     std::cout
-        << "GPU end-to-end time: "
-        << gpuMilliseconds
+        << "Total kernel time: "
+        << benchmark.totalKernelMilliseconds
         << " ms\n";
 
     std::cout
-        << "GPU kernel time: "
-        << gpuBenchmark.kernelMilliseconds
-        << " ms\n\n";
+        << "Throughput: "
+        << simulationsPerSecond
+        << " simulations/second\n\n";
 
     std::cout
-        << "End-to-end GPU speedup: "
-        << endToEndSpeedup
-        << "x\n";
-
-    std::cout
-        << "Kernel-only GPU speedup: "
-        << kernelOnlySpeedup
-        << "x\n\n";
-
-    std::cout
-        << "CPU results: "
-        << cpuResults.size()
+        << "Mean final price: "
+        << benchmark.meanFinalPrice
         << '\n';
 
     std::cout
-        << "GPU results: "
-        << gpuBenchmark.results.size()
+        << "Minimum final price: "
+        << benchmark.minimumFinalPrice
+        << '\n';
+
+    std::cout
+        << "Maximum final price: "
+        << benchmark.maximumFinalPrice
         << '\n';
 
     return 0;
