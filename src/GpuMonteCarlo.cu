@@ -6,6 +6,8 @@
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <utility>
+#include <vector>
 
 #define CUDA_CHECK(call)                                             \
 do                                                                   \
@@ -36,9 +38,8 @@ void MonteCarloKernel(
     unsigned long long seed)
 {
     const std::size_t simulationId =
-        static_cast<std::size_t>(
-            blockIdx.x
-        ) * blockDim.x
+        static_cast<std::size_t>(blockIdx.x)
+        * blockDim.x
         + threadIdx.x;
 
     if (simulationId >= numSimulations)
@@ -76,8 +77,7 @@ void MonteCarloKernel(
     for (
         int day = 0;
         day < tradingDays;
-        ++day
-    )
+        ++day)
     {
         const float z =
             curand_normal(
@@ -94,7 +94,7 @@ void MonteCarloKernel(
         price;
 }
 
-std::vector<float> RunGpuMonteCarlo(
+GpuBenchmarkResult RunGpuMonteCarlo(
     float initialPrice,
     float expectedReturn,
     float volatility,
@@ -121,6 +121,21 @@ std::vector<float> RunGpuMonteCarlo(
         )
     );
 
+    cudaEvent_t kernelStart;
+    cudaEvent_t kernelStop;
+
+    CUDA_CHECK(
+        cudaEventCreate(
+            &kernelStart
+        )
+    );
+
+    CUDA_CHECK(
+        cudaEventCreate(
+            &kernelStop
+        )
+    );
+
     constexpr int threadsPerBlock =
         256;
 
@@ -133,6 +148,13 @@ std::vector<float> RunGpuMonteCarlo(
             )
             / threadsPerBlock
         );
+
+    // Start GPU kernel timing.
+    CUDA_CHECK(
+        cudaEventRecord(
+            kernelStart
+        )
+    );
 
     MonteCarloKernel<<<
         blocks,
@@ -151,10 +173,32 @@ std::vector<float> RunGpuMonteCarlo(
         cudaGetLastError()
     );
 
+    // Stop GPU kernel timing.
     CUDA_CHECK(
-        cudaDeviceSynchronize()
+        cudaEventRecord(
+            kernelStop
+        )
     );
 
+    // Wait until the GPU reaches the stop event.
+    CUDA_CHECK(
+        cudaEventSynchronize(
+            kernelStop
+        )
+    );
+
+    float kernelMilliseconds =
+        0.0f;
+
+    CUDA_CHECK(
+        cudaEventElapsedTime(
+            &kernelMilliseconds,
+            kernelStart,
+            kernelStop
+        )
+    );
+
+    // Copy results from GPU to CPU.
     CUDA_CHECK(
         cudaMemcpy(
             hostResults.data(),
@@ -165,10 +209,25 @@ std::vector<float> RunGpuMonteCarlo(
     );
 
     CUDA_CHECK(
+        cudaEventDestroy(
+            kernelStart
+        )
+    );
+
+    CUDA_CHECK(
+        cudaEventDestroy(
+            kernelStop
+        )
+    );
+
+    CUDA_CHECK(
         cudaFree(
             deviceResults
         )
     );
 
-    return hostResults;
+    return {
+        std::move(hostResults),
+        kernelMilliseconds
+    };
 }

@@ -1,18 +1,25 @@
 #include "GpuMonteCarlo.h"
 #include "MonteCarloEngine.h"
 
+#include <cuda_runtime.h>
+
 #include <chrono>
 #include <iomanip>
 #include <iostream>
-#include <cuda_runtime.h>
 
 int main()
 {
-    constexpr float initialPrice = 100.0f;
-    constexpr float expectedReturn = 0.08f;
-    constexpr float volatility = 0.20f;
+    constexpr float initialPrice =
+        100.0f;
 
-    constexpr int tradingDays = 252;
+    constexpr float expectedReturn =
+        0.08f;
+
+    constexpr float volatility =
+        0.20f;
+
+    constexpr int tradingDays =
+        252;
 
     constexpr std::size_t numSimulations =
         1'000'000;
@@ -33,13 +40,16 @@ int main()
         initialPrice,
         expectedReturn,
         volatility,
-        tradingDays);
+        tradingDays
+    );
 
     const auto cpuStart =
         std::chrono::steady_clock::now();
 
     auto cpuResults =
-        cpuEngine.Run(numSimulations);
+        cpuEngine.Run(
+            numSimulations
+        );
 
     const auto cpuEnd =
         std::chrono::steady_clock::now();
@@ -47,30 +57,32 @@ int main()
     const double cpuMilliseconds =
         std::chrono::duration<
             double,
-            std::milli>(
-            cpuEnd - cpuStart)
-            .count();
+            std::milli
+        >(
+            cpuEnd - cpuStart
+        ).count();
 
     // -------------------------
-    // GPU warm-up
+    // CUDA warm-up
     // -------------------------
 
     cudaFree(nullptr);
 
     // -------------------------
-    // GPU benchmark
+    // GPU end-to-end benchmark
     // -------------------------
 
     const auto gpuStart =
         std::chrono::steady_clock::now();
 
-    auto gpuResults =
+    auto gpuBenchmark =
         RunGpuMonteCarlo(
             initialPrice,
             expectedReturn,
             volatility,
             tradingDays,
-            numSimulations);
+            numSimulations
+        );
 
     const auto gpuEnd =
         std::chrono::steady_clock::now();
@@ -78,16 +90,26 @@ int main()
     const double gpuMilliseconds =
         std::chrono::duration<
             double,
-            std::milli>(
-            gpuEnd - gpuStart)
-            .count();
+            std::milli
+        >(
+            gpuEnd - gpuStart
+        ).count();
 
     // -------------------------
-    // Results
+    // Speedup calculations
     // -------------------------
 
-    const double speedup =
-        cpuMilliseconds / gpuMilliseconds;
+    const double endToEndSpeedup =
+        cpuMilliseconds
+        / gpuMilliseconds;
+
+    const double kernelOnlySpeedup =
+        cpuMilliseconds
+        / gpuBenchmark.kernelMilliseconds;
+
+    // -------------------------
+    // Print results
+    // -------------------------
 
     std::cout
         << std::fixed
@@ -99,13 +121,23 @@ int main()
         << " ms\n";
 
     std::cout
-        << "GPU time: "
+        << "GPU end-to-end time: "
         << gpuMilliseconds
         << " ms\n";
 
     std::cout
-        << "GPU speedup: "
-        << speedup
+        << "GPU kernel time: "
+        << gpuBenchmark.kernelMilliseconds
+        << " ms\n\n";
+
+    std::cout
+        << "End-to-end GPU speedup: "
+        << endToEndSpeedup
+        << "x\n";
+
+    std::cout
+        << "Kernel-only GPU speedup: "
+        << kernelOnlySpeedup
         << "x\n\n";
 
     std::cout
@@ -115,7 +147,7 @@ int main()
 
     std::cout
         << "GPU results: "
-        << gpuResults.size()
+        << gpuBenchmark.results.size()
         << '\n';
 
     return 0;

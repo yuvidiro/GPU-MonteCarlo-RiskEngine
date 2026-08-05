@@ -3,7 +3,14 @@
 #include <cstddef>
 #include <vector>
 
-std::vector<float> RunGpuMonteCarlo(
+struct GpuBenchmarkResult
+{
+    std::vector<float> results;
+
+    float kernelMilliseconds;
+};
+
+GpuBenchmarkResult RunGpuMonteCarlo(
     float initialPrice,
     float expectedReturn,
     float volatility,
