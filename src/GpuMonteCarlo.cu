@@ -3,13 +3,13 @@
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <utility>
 #include <vector>
-#include <algorithm>
-#include <limits>
 
 #define CUDA_CHECK(call)                                             \
 do                                                                   \
@@ -37,28 +37,34 @@ void MonteCarloKernel(
     float volatility,
     int tradingDays,
     std::size_t numSimulations,
-    unsigned long long seed)
+    unsigned long long seed,
+    std::size_t simulationOffset)
 {
-    const std::size_t simulationId =
+    const std::size_t localSimulationId =
         static_cast<std::size_t>(blockIdx.x)
         * blockDim.x
         + threadIdx.x;
 
-    if (simulationId >= numSimulations)
+    if (localSimulationId >= numSimulations)
     {
         return;
     }
+
+    // Each batch must use different random sequences.
+    const std::size_t globalSimulationId =
+        simulationOffset
+        + localSimulationId;
 
     curandStatePhilox4_32_10_t randomState;
 
     curand_init(
         seed,
-        simulationId,
+        globalSimulationId,
         0,
         &randomState
     );
 
-    const float dt =
+    constexpr float dt =
         1.0f / 252.0f;
 
     const float drift =
@@ -92,7 +98,7 @@ void MonteCarloKernel(
         );
     }
 
-    results[simulationId] =
+    results[localSimulationId] =
         price;
 }
 
@@ -151,7 +157,6 @@ GpuBenchmarkResult RunGpuMonteCarlo(
             / threadsPerBlock
         );
 
-    // Start GPU kernel timing.
     CUDA_CHECK(
         cudaEventRecord(
             kernelStart
@@ -168,21 +173,20 @@ GpuBenchmarkResult RunGpuMonteCarlo(
         volatility,
         tradingDays,
         numSimulations,
-        12345ULL
+        12345ULL,
+        0
     );
 
     CUDA_CHECK(
         cudaGetLastError()
     );
 
-    // Stop GPU kernel timing.
     CUDA_CHECK(
         cudaEventRecord(
             kernelStop
         )
     );
 
-    // Wait until the GPU reaches the stop event.
     CUDA_CHECK(
         cudaEventSynchronize(
             kernelStop
@@ -200,7 +204,6 @@ GpuBenchmarkResult RunGpuMonteCarlo(
         )
     );
 
-    // Copy results from GPU to CPU.
     CUDA_CHECK(
         cudaMemcpy(
             hostResults.data(),
@@ -233,6 +236,7 @@ GpuBenchmarkResult RunGpuMonteCarlo(
         kernelMilliseconds
     };
 }
+
 GpuBatchBenchmarkResult RunBatchedGpuMonteCarlo(
     float initialPrice,
     float expectedReturn,
@@ -241,7 +245,48 @@ GpuBatchBenchmarkResult RunBatchedGpuMonteCarlo(
     std::size_t totalSimulations,
     std::size_t batchSize)
 {
-    double totalSum = 0.0;
+    // Allocate the largest required GPU buffer once.
+    float* deviceResults =
+        nullptr;
+
+    const std::size_t deviceBytes =
+        batchSize
+        * sizeof(float);
+
+    CUDA_CHECK(
+        cudaMalloc(
+            reinterpret_cast<void**>(
+                &deviceResults
+            ),
+            deviceBytes
+        )
+    );
+
+    // Reuse one CPU buffer for every batch.
+    std::vector<float> hostResults(
+        batchSize
+    );
+
+    cudaEvent_t kernelStart;
+    cudaEvent_t kernelStop;
+
+    CUDA_CHECK(
+        cudaEventCreate(
+            &kernelStart
+        )
+    );
+
+    CUDA_CHECK(
+        cudaEventCreate(
+            &kernelStop
+        )
+    );
+
+    constexpr int threadsPerBlock =
+        256;
+
+    double totalSum =
+        0.0;
 
     float minimumFinalPrice =
         std::numeric_limits<float>::max();
@@ -269,22 +314,87 @@ GpuBatchBenchmarkResult RunBatchedGpuMonteCarlo(
                 remaining
             );
 
-        auto batchResult =
-            RunGpuMonteCarlo(
-                initialPrice,
-                expectedReturn,
-                volatility,
-                tradingDays,
-                currentBatchSize
+        const int blocks =
+            static_cast<int>(
+                (
+                    currentBatchSize
+                    + threadsPerBlock
+                    - 1
+                )
+                / threadsPerBlock
             );
 
+        CUDA_CHECK(
+            cudaEventRecord(
+                kernelStart
+            )
+        );
+
+        MonteCarloKernel<<<
+            blocks,
+            threadsPerBlock
+        >>>(
+            deviceResults,
+            initialPrice,
+            expectedReturn,
+            volatility,
+            tradingDays,
+            currentBatchSize,
+            12345ULL,
+            completedSimulations
+        );
+
+        CUDA_CHECK(
+            cudaGetLastError()
+        );
+
+        CUDA_CHECK(
+            cudaEventRecord(
+                kernelStop
+            )
+        );
+
+        CUDA_CHECK(
+            cudaEventSynchronize(
+                kernelStop
+            )
+        );
+
+        float batchKernelMilliseconds =
+            0.0f;
+
+        CUDA_CHECK(
+            cudaEventElapsedTime(
+                &batchKernelMilliseconds,
+                kernelStart,
+                kernelStop
+            )
+        );
+
         totalKernelMilliseconds +=
-            batchResult.kernelMilliseconds;
+            batchKernelMilliseconds;
+
+        const std::size_t currentBatchBytes =
+            currentBatchSize
+            * sizeof(float);
+
+        CUDA_CHECK(
+            cudaMemcpy(
+                hostResults.data(),
+                deviceResults,
+                currentBatchBytes,
+                cudaMemcpyDeviceToHost
+            )
+        );
 
         for (
-            float finalPrice
-            : batchResult.results)
+            std::size_t i = 0;
+            i < currentBatchSize;
+            ++i)
         {
+            const float finalPrice =
+                hostResults[i];
+
             totalSum +=
                 finalPrice;
 
@@ -311,6 +421,25 @@ GpuBatchBenchmarkResult RunBatchedGpuMonteCarlo(
             << totalSimulations
             << " simulations\n";
     }
+
+    CUDA_CHECK(
+        cudaEventDestroy(
+            kernelStart
+        )
+    );
+
+    CUDA_CHECK(
+        cudaEventDestroy(
+            kernelStop
+        )
+    );
+
+    // Free GPU memory once after every batch finishes.
+    CUDA_CHECK(
+        cudaFree(
+            deviceResults
+        )
+    );
 
     const double meanFinalPrice =
         totalSum
